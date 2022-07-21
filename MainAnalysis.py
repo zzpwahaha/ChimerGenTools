@@ -26,7 +26,7 @@ def standardImages( data,
                     plottedData=None, bg=arr([0]), fitBeamWaist=False, fitPics=False,
                     cameraType='dataray', fitWidthGuess=80, quiet=False, avgFits=False, lastDataIsBackground=False, expFileV=None ):
     """
-    :param loadType: 'andor', 'mako'
+    :param loadType: 'andor', 'mako1', 'mako2'
     :param window: PictureWindow to provide easy cropping of the image
     :param reps: Repetition number. This will be ignored and auto filled if the data is a number pointing to a hdf5 data instead of an array 
     :param key: 
@@ -68,11 +68,19 @@ def standardImages( data,
             # read old data format from standalone basler programs.
             # rawData = loadCompoundBasler(data, loadType)
             print("Tried loadType==ace, but skipped in Crylsis. Just a heads up");
-        elif loadType == 'mako':
+        elif loadType == 'mako1':
             with exp.ExpFile(expFile_version=expFileV) as f:
-                print('Opening Mako Images.')
+                print('Opening Mako1 Images.')
                 f.open_hdf5(data,True)
-                rawData = f.get_mako_pics()
+                rawData = f.get_mako1_pics()
+                reps = f.get_reps()
+                if key is None:
+                    _, key = f.get_key()
+        elif loadType == 'mako2':
+            with exp.ExpFile(expFile_version=expFileV) as f:
+                print('Opening Mako2 Images.')
+                f.open_hdf5(data,True)
+                rawData = f.get_mako2_pics()
                 reps = f.get_reps()
                 if key is None:
                     _, key = f.get_key()
@@ -94,8 +102,10 @@ def standardImages( data,
             f.open_hdf5(data,True)
             if loadType == 'andor':
                 rawData = f.get_pics()
-            elif loadType == 'mako':
-                rawData = f.get_mako_pics()
+            elif loadType == 'mako1':
+                rawData = f.get_mako1_pics()
+            elif loadType == 'mako2':
+                rawData = f.get_mako2_pics()
             elif loadType == 'basler':
                 rawData = f.get_basler_pics()
             if key is None:
@@ -140,7 +150,7 @@ def standardImages( data,
             pixelSize = mc.dataRayPixelSize
         elif cameraType == 'andor':
             pixelSize = mc.andorPixelSize
-        elif cameraType == 'mako':
+        elif cameraType == 'mako1' or cameraType == 'mako2':
             pixelSize = mc.makoPixelSize
         elif cameraType == 'ace':
             pixelSize = mc.baslerAcePixelSize

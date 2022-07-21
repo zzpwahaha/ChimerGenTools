@@ -173,7 +173,7 @@ def fitManyGaussianImage(im, numGauss, neighborhood_size=20, threshold=1, direct
     """
     maximaLocs = findImageMaxima(im, neighborhood_size=neighborhood_size, threshold=threshold)
     if len(maximaLocs) != numGauss:
-        raise ValueError("ERROR: didn't find the right number of maxima!")
+        raise ValueError("ERROR: didn't find the right number of maxima! Found")
     guess = [min(im.flatten())]
     for loc in maximaLocs:
         guess += [im[loc[1],loc[0]], loc[0], loc[1], widthGuess, widthGuess]
@@ -194,7 +194,7 @@ def fitManyGaussianImage(im, numGauss, neighborhood_size=20, threshold=1, direct
     ax[3].set_title('Fit')
     ax[4].imshow(im-zpts_fit)
     ax[4].set_title('Fit-Diff')
-    return optParam
+    return optParam, optCov
 
 def temperatureAnalysis( data, magnification, temperatureGuess=100e-6, **standardImagesArgs ):
     res = ma.standardImages(data, scanType="Time(ms)", majorData='fits', fitPics=True, manualAccumulation=True, quiet=True, **standardImagesArgs)
@@ -529,11 +529,11 @@ def fitPic(picture, showFit=True, guessSigma_x=1, guessSigma_y=1, guess_x=None, 
     """
     pos = arr(np.unravel_index(np.argmax(picture), picture.shape))
     pos[1] = guess_x if guess_x is not None else pos[1]
-    pos[0] = guess_y if guess_x is not None else pos[0]
+    pos[0] = guess_y if guess_y is not None else pos[0]
 
     pic = picture.flatten()
-    x = np.linspace(0, picture.shape[1], picture.shape[1])
-    y = np.linspace(0, picture.shape[0], picture.shape[0])
+    x = np.linspace(0, picture.shape[1]-1, picture.shape[1])
+    y = np.linspace(0, picture.shape[0]-1, picture.shape[0])
     X, Y = np.meshgrid(x, y)
     ### 2D Fit
     initial_guess = [(np.max(pic) - np.min(pic)), pos[1], pos[0], guessSigma_x, guessSigma_y, np.min(pic) if guessOffset is None else guessOffset]
@@ -1699,7 +1699,8 @@ def processSingleImage(rawData, bg, window, xMin, xMax, yMin, yMax, accumulation
     return normData, dataMinusBg, xPts, yPts
 
 def coordMax(rawData):
-    return np.unravel_index(rawData.argmax(), rawData.shape)
+    maxidx = np.unravel_index(rawData.argmax(), rawData.shape)
+    return [maxidx[1],maxidx[0]]
 
 def processImageData(key, rawData, bg, window, accumulations, dataRange, zeroCorners,
                      smartWindow, manuallyAccumulate=False):

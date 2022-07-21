@@ -1,4 +1,5 @@
 import numpy as np
+import PhysicsConstants as pc
 
 def center():
     return None
@@ -18,7 +19,7 @@ def f_raw(time, t_0, sigma_x, T, sigma_I):
     :param T: The temperature of the MOT.
     :param sigma_I: the waist of the imaging laser.
     """
-    sigma_v = np.sqrt(mc.k_B * T / mc.Rb87_M)
+    sigma_v = np.sqrt(pc.k_B * T / pc.Rb87_M)
     sigma_xt = np.sqrt(sigma_v**2*(time+t_0)**2 + sigma_x**2)
     sigma_m = sigma_I*sigma_xt/np.sqrt(sigma_I**2 + sigma_xt**2)
     return sigma_m

@@ -238,11 +238,16 @@ class ExpFile:
         pics = p_t.reshape((p_t.shape[0], p_t.shape[2], p_t.shape[1]))
         return pics
     
-    def get_mako_pics(self):
-        p_t = arr(self.f['Mako']['Pictures'])
+    def get_mako1_pics(self):
+        p_t = arr(self.f['Mako']['Mako1']['Pictures'])
         pics = p_t.reshape((p_t.shape[0], p_t.shape[2], p_t.shape[1]))
         return pics
     
+    def get_mako2_pics(self):
+        p_t = arr(self.f['Mako']['Mako2']['Pictures'])
+        pics = p_t.reshape((p_t.shape[0], p_t.shape[2], p_t.shape[1]))
+        return pics
+
     def get_basler_pics(self):
         p_t = arr(self.f['Basler']['Pictures'])
         pics = p_t.reshape((p_t.shape[0], p_t.shape[2], p_t.shape[1]))
@@ -256,8 +261,16 @@ class ExpFile:
         avg_pic /= len(pics)
         return avg_pic
 
-    def get_avg_mako_pic(self):
-        pics = self.get_mako_pics()
+    def get_avg_mako1_pic(self):
+        pics = self.get_mako1_pics()
+        avg_pic = np.zeros(pics[0].shape)
+        for p in pics:
+            avg_pic += p
+        avg_pic /= len(pics)
+        return avg_pic
+
+    def get_avg_mako2_pic(self):
+        pics = self.get_mako2_pics()
         avg_pic = np.zeros(pics[0].shape)
         for p in pics:
             avg_pic += p
@@ -276,9 +289,12 @@ class ExpFile:
         if type == 'andor':
             binH = self.f['Andor']['Image-Dimensions']['Horizontal-Binning'][()][0]
             binV = self.f['Andor']['Image-Dimensions']['Vertical-Binning'][()][0]
-        elif type == 'mako':
-            binH = self.f['Mako']['Image-Dimensions']['Horizontal-Binning'][()][0]
-            binV = self.f['Mako']['Image-Dimensions']['Vertical-Binning'][()][0]
+        elif type == 'mako1':
+            binH = self.f['Mako']['Mako1']['Image-Dimensions']['Horizontal-Binning'][()][0]
+            binV = self.f['Mako']['Mako1']['Image-Dimensions']['Vertical-Binning'][()][0]
+        elif type == 'mako2':
+            binH = self.f['Mako']['Mako2']['Image-Dimensions']['Horizontal-Binning'][()][0]
+            binV = self.f['Mako']['Mako2']['Image-Dimensions']['Vertical-Binning'][()][0]
         else:
             raise ValueError('Bad value for CameraType.')
         return binH, binV 
