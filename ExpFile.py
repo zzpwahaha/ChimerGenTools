@@ -1,10 +1,13 @@
 # created by mark brown
+from traceback import print_tb
 import h5py as h5
 from colorama import Fore, Style
 from numpy import array as arr
 import numpy as np
 import Miscellaneous as misc
 import datetime
+import pandas as pd
+from tqdm import tqdm
 dataAddress = None
 currentVersion = 1
 
@@ -149,19 +152,26 @@ class ExpFile:
         self.key_name = None
         self.key = None 
         self.pics = None
+        self.pixis_pics = None
         self.reps = None
         self.exp_start_time = None
         self.exp_start_date = None
         self.exp_stop_time = None
         self.exp_stop_date = None
         self.data_addr = dataAddress
+        self.file_id = file_id
         if file_id is not None:
             self.f = self.open_hdf5(fileID=file_id, useBase=useBaseA)
             self.key_name, self.key = self.get_key(keyParameter=keyParameter)
             self.pics = self.get_pics()
             self.reps = self.get_reps()
             self.exp_start_date, self.exp_start_time, self.exp_stop_date, self.exp_stop_time = self.get_experiment_time_and_date()
-    
+            self.rep_first = self.f['./Master-Runtime/Repetitions-First'][0]
+            # try:
+            #     self.pixis_pics = self.get_pixis_pics()
+            # except FileNotFoundError:
+            #     print(r'Did not find Pixis file PixisData_{:d}.txt, make sure it is named with the same id as the h5 file.'.format(file_id)
+            #      + ' Or you can call get_pixis_pics mannually with the correct data id')
     
     def __enter__(self):
         return self
@@ -238,6 +248,34 @@ class ExpFile:
         pics = p_t.reshape((p_t.shape[0], p_t.shape[2], p_t.shape[1]))
         return pics
     
+    def get_pixis_pics(self, file_id=None):
+        file_id = file_id or self.file_id
+        print("Getting files from {:s}PixisData_{:d}.txt".format(self.data_addr,file_id))
+        d = pd.read_csv("{:s}PixisData_{:d}.txt".format(self.data_addr,file_id), sep='\t', header=None)
+        _pixi_datas = []
+        pixi_data = []
+        for index, row in tqdm(d.iterrows()):
+            if row.item() != ';':
+                pixi_data.append([int(num) for num in row.item().split(' ') if num])
+                if index==len(d.index)-1:
+                    _pixi_datas.append(np.array(pixi_data))
+            else:
+                _pixi_datas.append(np.array(pixi_data))
+                pixi_data = []
+        pixi_datas = np.array(_pixi_datas)
+        if self.rep_first:
+            # pixi_datas = np.array(pixi_datas).reshape(ee.key.size, ee.get_reps())
+            pixi_datas = np.array(pixi_datas).reshape([self.key.size, self.get_reps(),*pixi_datas.shape[1:]])
+            # pixi_datas = np.array(pixi_datas).reshape([ee.key.size,1000,*pixi_datas.shape[1:]])
+            print("Repetition First, data shape ", pixi_datas.shape)
+        else:
+            pixi_datas = np.array(pixi_datas).reshape([self.get_reps(), self.key.shape[0],*pixi_datas.shape[1:]])
+            pixi_datas = np.einsum('ijkl->jikl',pixi_datas) #np.transpose(pixi_datas,(1,0,2,3)).shape # both should work
+            print("Variation First, data shape ", pixi_datas.shape)
+        self.pixis_pics = pixi_datas
+        return pixi_datas
+
+
     def get_mako1_pics(self):
         p_t = arr(self.f['Mako']['Mako1']['Pictures'])
         pics = p_t.reshape((p_t.shape[0], p_t.shape[2], p_t.shape[1]))
@@ -425,22 +463,22 @@ class ExpFile:
         """
         infoStr = self.get_pic_info()
         
-        infoStr += 'Variations: ' + str(len(self.key)) + ';\t'
-        infoStr += 'Repetitions: ' + str(self.reps) + ';\tExp File Version: ' + str(self.version) + ';''\n'
+        infoStr += 'Variations: ' + str(len(self.key)) + ";\t"
+        infoStr += 'Repetitions: ' + str(self.reps) + ';\tExp File Version: ' + str(self.version) + ';'"\n"
         infoStr += 'Experiment started at (H:M:S) ' + str(self.exp_start_time) + ' on (Y-M-D) ' + str(self.exp_start_date) + ', '
-        infoStr += 'And ended at ' + str(self.exp_stop_time) + ' on ' + str(self.exp_stop_date) + '\n'
+        infoStr += 'And ended at ' + str(self.exp_stop_time) + ' on ' + str(self.exp_stop_date) + "\n"
         if 'Experiment_Notes' in self.f['Miscellaneous'].keys():
-            infoStr += 'Experiment Notes: ' + str(self.f['Miscellaneous']['Experiment_Notes'][0].decode("utf-8")) + '\n'
+            infoStr += 'Experiment Notes: ' + str(self.f['Miscellaneous']['Experiment_Notes'][0].decode("utf-8")) +"\n"
         else:
-            infoStr += 'Experiment Notes: HDF5 NOT ANNOTATED: please call exp.Annotate() to annotate this file.\n'
+            infoStr += "Experiment Notes: HDF5 NOT ANNOTATED: please call exp.Annotate() to annotate this file.\n"
         if 'Experiment_Rationale' in self.f['Miscellaneous'].keys():
-            infoStr += '(Old Notes format:) Experiment Rationale: ' + str(self.f['Miscellaneous']['Experiment_Rationale'][0].decode("utf-8")) + '\n'
+            infoStr += '(Old Notes format:) Experiment Rationale: ' + str(self.f['Miscellaneous']['Experiment_Rationale'][0].decode("utf-8")) + "\n"
         if 'Experiment_Result' in self.f['Miscellaneous'].keys():
-            infoStr += '(Old Notes format:) Experiment Result: ' + str(self.f['Miscellaneous']['Experiment_Result'][0].decode("utf-8")) + '\n'
+            infoStr += '(Old Notes format:) Experiment Result: ' + str(self.f['Miscellaneous']['Experiment_Result'][0].decode("utf-8")) + "\n"
         expNoteNum = 1
         while expNoteNum < 1000:
             if 'Experiment_Note_' + str(expNoteNum) in self.f['Miscellaneous'].keys():
-                infoStr += "Extra Experiment Note #" + str(expNoteNum) + ": " + str(self.f['Miscellaneous']['Experiment_Note_' + str(expNoteNum)][0].decode("utf-8")) + '\n'
+                infoStr += "Extra Experiment Note #" + str(expNoteNum) + ": " + str(self.f['Miscellaneous']['Experiment_Note_' + str(expNoteNum)][0].decode("utf-8")) + "\n"
                 expNoteNum += 1
             else: 
                 break
@@ -467,6 +505,30 @@ class ExpFile:
             pass
         return start_date, start_time, stop_date, stop_time
         #return "","","",""
+
+    def __allkeys(self, obj):
+        "Recursively find all keys in an h5py.Group."
+        keys = (obj.name,)
+        if isinstance(obj, h5.Group):
+            for key, value in obj.items():
+                if isinstance(value, h5.Group):
+                    keys = keys + self.__allkeys(value)
+                else:
+                    keys = keys + (value.name,)
+        return keys
+
+    def print_all_keys(self):
+        """
+        print keys name and keys value row by row
+        """
+        exp_all_keys = self.__allkeys(self.get_params())
+        exp_key_name = [keys for keys in exp_all_keys if len(keys.split('/'))==4]
+        _param = self.get_params()
+        print('{:<25s}:{:>10s}'.format('Name','Value'))
+        for idx, _key_name in enumerate(exp_key_name):
+            print('{:<25s}:{:>10.2f}'.format(
+                _param[_key_name+'/Name'][()].tobytes().decode("utf-8"),
+                _param[_key_name+'/Constant Value'][0]))
 
 if __name__ == "__main__":
     print("I am expfile")

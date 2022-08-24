@@ -731,3 +731,4 @@ def AnalyzeRearrangeMoves(rerngInfoAddress, fileNumber, locations, loadPic=0, re
             fits[targetLoc] = None
     return allData, fits, rawPics, moveList
 
+

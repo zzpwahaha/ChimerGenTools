@@ -42,7 +42,7 @@ def f_unc(x, A1, x01, sig1, offset):
     return offset + A1 * unp.exp(-(x - x01) ** 2 / (2 * sig1 ** 2))
 
 
-def guess(key, values):
+def guess(key, values, peak = True):
     """
     Returns guess values for the parameters of this function class based on the input. Used for fitting using this
     class.
@@ -50,7 +50,10 @@ def guess(key, values):
     :param values:
     :return: guess for gaussian parameters
     """
-    return [max(values) - min(values), key[np.argmax(values)], (max(key)-min(key))/4, min(values)]
+    if peak:
+        return [max(values) - min(values), key[np.argmax(values)], (max(key)-min(key))/4, min(values)]
+    else:
+        return [min(values) - max(values), key[np.argmin(values)], (max(key)-min(key))/4, max(values)]
 
 
 def area_under(A1, x01, sig1, offset):
