@@ -1,10 +1,14 @@
+from lib2to3.pytree import type_repr
 import time
+from tkinter import N
+from typing import Optional, Type
 from pandas import DataFrame
 from numpy import array as arr
 import numpy as np
-from random import randint
+from random import gauss, randint
 from matplotlib.pyplot import *
 import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
 import matplotlib as mpl
 import mpl_toolkits.axes_grid1 as axesTool
 import mpl_toolkits.axes_grid1
@@ -12,6 +16,8 @@ from scipy.optimize import curve_fit as fit
 from matplotlib.patches import Ellipse
 import IPython
 import IPython.display as disp
+from IPython.display import set_matplotlib_formats
+from tqdm import tqdm
 
 import MainAnalysis as ma
 import TransferAnalysis
@@ -32,8 +38,8 @@ import AnalysisHelpers as ah
 import PhysicsConstants as mc 
 import PopulationAnalysis as pa 
 from TimeTracker import TimeTracker
-from fitters import LargeBeamMotExpansion, exponential_saturation
-from fitters.Gaussian import gaussian_2d, double as double_gaussian, bump
+from fitters import LargeBeamMotExpansion, exponential_saturation, lorentzian
+from fitters.Gaussian import gaussian, gaussian_2d, double as double_gaussian, bump
 import ExpFile as exp
 
 # stoled from https://stackoverflow.com/questions/57216993/define-aspect-ratio-when-using-twinx-in-new-version-of-matplotlib
@@ -68,6 +74,159 @@ def GoldenRatio(fig,cbar = False,parasiticCbar = False,ratio=0.618034):
                               box1.y0, box1.x1-box.x0, box.height] )
     else:
         fig.subplots_adjust(bottom=l, top=1-l)
+
+
+def multiline(xs, ys, c, ax=None, **kwargs):
+    """Plot lines with different colorings
+
+    Parameters
+    ----------
+    xs : iterable container of x coordinates
+    ys : iterable container of y coordinates
+    c : iterable container of numbers mapped to colormap
+    ax (optional): Axes to plot on.
+    kwargs (optional): passed to LineCollection
+
+    Notes:
+        len(xs) == len(ys) == len(c) is the number of line segments
+        len(xs[i]) == len(ys[i]) is the number of points for each line (indexed by i)
+
+    Returns
+    -------
+    lc : LineCollection instance.
+    """
+
+    # find axes
+    ax = plt.gca() if ax is None else ax
+
+    # create LineCollection
+    segments = [np.column_stack([x, y]) for x, y in zip(xs, ys)]
+    lc = LineCollection(segments, **kwargs)
+
+    # set coloring of line segments
+    #    Note: I get an error if I pass c as a list here... not sure why.
+    lc.set_array(np.asarray(c))
+
+    # add lines to axes and rescale 
+    #    Note: adding a collection doesn't autoscalee xlim/ylim
+    ax.add_collection(lc)
+    ax.autoscale()
+    return lc
+
+def plotAtomArrayAvgThroughVariations(data, window = None, maximaLocs = None, gridShape=None, exp_file: Optional[exp.ExpFile] = None,
+        xkey = None, fit = None, p0=None  ):
+    '''
+    :params ndarray data, should be 4D as var-rep-2D image
+    :params ndarray window: [left, bottom, width, height]
+    :params list maximaLocs: [[axis0, axis1], [axis0, axis1]]
+    :params list gridShape: [number_of_rows, number_of_cols]
+    :params ExpFile exp_file
+    '''
+    if type(data) is not np.ndarray:
+        raise TypeError("The data need to be a numpy array")
+    if data.ndim < 3:
+        raise ValueError("The input data need to be at least 3D, that is at least 1 repititon. In general it is 4D and ordered as var-rep-2darray")
+    if window is not None:
+        data = ah.crop(data, *window)[-1]
+    if maximaLocs is None:
+        data_for_locs = data.reshape(int(data.size/(data.shape[-1]*data.shape[-2])), *data.shape[-2:])
+        maximaLocs = ah.findAtomLocs(data_for_locs.mean(axis=0), sort='MatchArray')
+    if len(maximaLocs) != gridShape[0]*gridShape[1]:
+        raise ValueError("Grid shape {:d}x{:d}={:d} is NOT matched to the number of maxima {:d} found in the picture".format(
+            gridShape[0],gridShape[1],gridShape[0]*gridShape[1],len(maximaLocs)
+        ))
+    if xkey is None and exp_file is None:
+        raise ValueError("Need  to specify x axis value or exp file to plot the data")
+    if fit is not None and fit != 'Gauss_peak' and fit != 'Gauss_dip' \
+                       and fit != 'Lorentzian_peak' and fit != 'Lorentzian_dip':
+        raise TypeError("Fit type can only be Gaussian or Lorentzian")
+    
+    data_stat = lambda idx_scan, pos : data[idx_scan, :, pos[1],pos[0]]
+    loading_count_scan =[]
+    for _max in maximaLocs:
+        loading_count =[]    
+        for id_scan, _ in enumerate(data):
+            loading_count.append(data_stat(id_scan, _max).mean())
+        loading_count_scan.append(loading_count)
+    loading_count_scan = np.array(loading_count_scan)
+    
+    
+    set_matplotlib_formats('svg')
+    fig, axes = plt.subplots(figsize=[12, 8], nrows=gridShape[0], ncols=gridShape[1],sharex='col',sharey=True)
+    if exp_file is not None:
+        plot_x = exp_file.key[:,0] if exp_file.key.ndim>=2 else exp_file.key
+    elif xkey is not None:
+        plot_x = xkey
+
+    popts = []
+    pcovs = []
+    for idx, (_,ax) in enumerate(zip(maximaLocs,axes[::-1,:].flatten())):
+        plot_y = loading_count_scan[idx,:]
+        ax.plot(plot_x, plot_y, alpha = 1, c='k',ls='--',marker='.')
+        if fit=='Gauss_dip' or fit =='Gauss_peak':
+            if p0 is None:
+                p0 = gaussian.guess(plot_x, plot_y, peak = True if fit=='Gauss_peak' else False)
+            popt, pcov = ah.fit(gaussian.f_raw, plot_x, plot_y, p0=p0)
+            ax.plot(plot_x, gaussian.f_raw(plot_x, *popt), alpha = 1, c='blue',ls='-')
+        if fit=='Lorentzian_dip' or fit =='Lorentzian_peak':
+            if p0 is None:
+                p0 = lorentzian.guess(plot_x, plot_y, peak = True if fit=='Lorentzian_peak' else False)
+            popt, pcov = ah.fit(lorentzian.f_raw, plot_x, plot_y, p0=p0)
+            ax.plot(plot_x, lorentzian.f_raw(plot_x, *popt), alpha = 1, c='blue',ls='-')
+        if fit is not None:
+            popts.append(popt)
+            pcovs.append(pcov)
+
+
+    if exp_file is not None:
+        fig.supxlabel(r'{:s}'.format(exp_file.key_name[0] if exp_file.key.ndim>=2 else exp_file.key_name))
+        fig.supylabel(r'Secondary electrons (ADU)')
+        fig.suptitle(exp_file.data_addr + 'data_{}.h5'.format(exp_file.file_id),y=0.95);
+
+    return fig, axes, loading_count_scan, np.array(popts), np.array(pcovs)
+
+def plotAtomArrayHistogram(data, scan_idx, window = None, maximaLocs = None, gridShape=None, exp_file: Optional[exp.ExpFile] = None):
+    '''
+    :params ndarray data, should be 4D as var-rep-2D image
+    :params ndarray window: [left, bottom, width, height]
+    :params list maximaLocs: [[axis0, axis1], [axis0, axis1]]
+    :params list gridShape: [number_of_rows, number_of_cols]
+    :params ExpFile exp_file
+    '''
+    if type(data) is not np.ndarray:
+        raise TypeError("The data need to be a numpy array")
+    if data.ndim < 3:
+        raise ValueError("The input data need to be at least 3D, that is at least 1 repititon. In general it is 4D and ordered as var-rep-2darray")
+    if window is not None:
+        data = ah.crop(data, *window)[-1]
+    if maximaLocs is None:
+        data_for_locs = data.reshape(data.size/(data.shape[:-1]*data.shape[:-2]), *data.shape[-2:])
+        maximaLocs = ah.findAtomLocs(data_for_locs.mean(axis=0), sort='MatchArray')
+    if len(maximaLocs) != gridShape[0]*gridShape[1]:
+        raise ValueError("Grid shape {:d}x{:d}={:d} is NOT matched to the number of maxima {:d} found in the picture".format(
+            gridShape[0],gridShape[1],gridShape[0]*gridShape[1],len(maximaLocs)
+        ))
+    data_stat = lambda idx_scan, pos : data[idx_scan, :, pos[1],pos[0]]
+
+    set_matplotlib_formats('svg')
+    fig, axes = plt.subplots(figsize=[9, 6], nrows=gridShape[0], ncols=gridShape[1],sharex='col',sharey=True)
+    n_list = []; bins_list = []
+    # [::-1,:] meant to reverse the y order so that the axes grid resembles the pcolomesh plot
+    for idx, (_max,ax) in tqdm(enumerate(zip(maximaLocs, axes[::-1,:].flatten()))):
+        n, bins, patches = ax.hist(data_stat(scan_idx, _max), density=True,
+                            bins=np.linspace(750, 1200, 181),
+                            log=False,
+                            alpha=0.9, rwidth=0.85)
+        # ax.plot(bins[:-1]+np.diff(bins)[0]/2, n, alpha = 0.2, c='k')
+        # ax.axvline(x=threshold,ls='--',c='k')
+        n_list.append(n)
+        bins_list.append(bins[:-1]+np.diff(bins)[0]/2)
+    fig.supxlabel(r'Secondary electrons (ADU)')
+    fig.supylabel(r'Probability')
+    # mp.GoldenRatio(fig)
+    fig.suptitle("{:s}data_{:d}.h5 \n {:s}: scan{:d} ({:.2f})".format(exp_file.data_addr, exp_file.file_id, 
+                exp_file.key_name[0] if exp_file.key.ndim>=2 else exp_file.key_name, scan_idx, 
+                exp_file.key[scan_idx][0] if exp_file.key.ndim>=2 else exp_file.key[0]) ,y=0.95);
 
 def addAxColorbar(fig, ax, im):
     cax = mpl_toolkits.axes_grid1.make_axes_locatable(ax).append_axes('right', size='5%', pad=0.05)

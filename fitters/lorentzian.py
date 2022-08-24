@@ -1,3 +1,4 @@
+import numpy as np
 def center():
     return None  # or the arg-number of the center.
 
@@ -19,7 +20,7 @@ def f_raw(x, A, center, width, offset):
     The raw function call, performs no checks on valid parameters..
     :return:
     """
-    return A / ((x - center)**2 + (width/2)**2)
+    return A / ((x - center)**2 + (width/2)**2) + offset
 
 
 def f_unc(x, A, center, width, offset):
@@ -27,10 +28,10 @@ def f_unc(x, A, center, width, offset):
     similar to the raw function call, but uses unp instead of np for uncertainties calculations.
     :return:
     """
-    return A / ((x - center)**2 + (width/2)**2)
+    return A / ((x - center)**2 + (width/2)**2) + offset
 
 
-def guess(key, values):
+def guess(key, values, peak = True):
     """
     Returns guess values for the parameters of this function class based on the input. Used for fitting using this
     class.
@@ -38,3 +39,8 @@ def guess(key, values):
     :param values:
     :return:
     """
+    width = (max(key)-min(key))/4
+    if peak:
+        return [(max(values) - min(values))*(width/2)**2, key[np.argmax(values)], (max(key)-min(key))/4, min(values)]
+    else:
+        return [(max(values) - min(values))*(width/2)**2, key[np.argmin(values)], (max(key)-min(key))/4, max(values)]

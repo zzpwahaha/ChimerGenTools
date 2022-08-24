@@ -48,6 +48,66 @@ import matplotlib as mpl
 import matplotlib.cm
 from IPython.display import Image, HTML, display
 
+# to make sure pcolormesh looks like seaborn or imshow
+def __fixPcolormesh(Xtmp, Ytmp):
+    return (np.concatenate([Xtmp, [Xtmp[-1]+(Xtmp[1]-Xtmp[0])]])-(Xtmp[1]-Xtmp[0])/2,
+            np.concatenate([Ytmp, [Ytmp[-1]+(Ytmp[1]-Ytmp[0])]])-(Ytmp[1]-Ytmp[0])/2)
+# note this is before calling meshgrid!
+# the return should be put into np.meshgrid
+
+
+def crop(fimage, left, bottom, width, height, forPlot=True, startXYZero = False):
+    # first index is y, second index is x in pcolormesh
+    #     x=fimage.shape[1]; y=fimage.shape[0]
+    '''
+    :params fimage: ndarray, at least 2D
+    :params forPlot: true means the first two return will be a 2d array feed into the pcolormesh, 
+    false means the first two is just 1d array for the length and offset of the image size
+    :params startXYZero: true means the first two return will represent the offset of the image X,Y axis, false means X,Y start from zero
+    '''
+    if type(fimage) is not np.ndarray:
+        raise TypeError("The data need to be a numpy array")
+    if fimage.ndim < 2:
+        raise ValueError("The input data need to be at least 2D")
+    if fimage.ndim == 2:
+        img_return = fimage[bottom:bottom+height, left:left+width]
+    elif fimage.ndim:
+        img_shape = fimage.shape
+        img_num = int(fimage.size / (img_shape[-1]*img_shape[-2]))
+        img_return = fimage.reshape(img_num,*img_shape[-2:])[:,bottom:bottom+height, left:left+width].reshape(*img_shape[:-2],height,width)
+    if forPlot:
+        if startXYZero:
+            return *__fixPcolormesh(np.arange(0, 0+width),
+                                np.arange(0, 0+height)), img_return
+        else:
+            return *__fixPcolormesh(np.arange(left, left+width),
+                                np.arange(bottom, bottom+height)), img_return
+    else:
+        return np.arange(left, left+width), np.arange(bottom, bottom+height), img_return
+
+
+
+def findAtomLocs(pic, window = None, neighborhood_size=10, threshold=30, sort = 'MatchArray'):
+    '''
+    :params ndarray pic: 2D array of image
+    :params bool sort: 'HightoLow' means the returned coord will correspond to value in the array in descending order
+                       'MatchArray' means the returned coord will correspond to value matching the array grid
+    '''
+    if window is not None:
+        maximaLocs = findImageMaxima(crop(pic, *window)[-1], neighborhood_size=neighborhood_size, threshold=threshold)
+        max_values = np.array([pic[window[1] + max[1], window[0] + max[0]] for max in maximaLocs])
+    else:
+        maximaLocs = findImageMaxima(pic, neighborhood_size=neighborhood_size, threshold=threshold)
+        max_values = np.array([pic[max[1], max[0]] for max in maximaLocs])
+    if sort == 'HightoLow':
+        maximaLocs = [maximaLocs[x] for x in max_values.argsort()[::-1]]
+    elif sort == 'MatchArray':
+        maximaLocs = sorted(maximaLocs, key=lambda locs: locs[1]+np.log10(locs[0])/4.0, reverse=False) 
+        # take log of the y index so that it will sort x first, divided by 4 make it the base bacome 10**4, so that it can sort up to 1e1 by 1e4 array
+    else:
+        warn("Can not specify the output to be either 'HightoLow or 'MatchArray' at the same time. Will default to match-array")
+    return maximaLocs
+
 def softwareBinning(binningParams, rawData):
     if binningParams is not None:
         sb = binningParams
@@ -826,6 +886,7 @@ def maximizeAomPerformance(horCenterFreq, vertCenterFreq, spacing, numTweezersHo
     xPhases = list(xPhases.x) + [0]
     print('horFreqs', horFreqs)
     print('horAmps', horAmps)
+    print('Hor-Phases-Guess:', [misc.round_sig_str(y,10) for y in xGuess])
     print('Hor-Phases:', [misc.round_sig_str(x,10) for x in xPhases])
 
     if paperGuess:
@@ -841,6 +902,7 @@ def maximizeAomPerformance(horCenterFreq, vertCenterFreq, spacing, numTweezersHo
 
     print('vertFreqs', vertFreqs)
     print('vertAmps', vertAmps)
+    print('Vert-Phases-Guess:', [misc.round_sig_str(y,10) for y in yGuess])
     print('Vert-Phases:', [misc.round_sig_str(y,10) for y in yPhases])
 
     xpts = np.linspace(0, 1e-6, 10000)
